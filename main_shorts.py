@@ -5,7 +5,7 @@ from topics import get_next_topic
 from shorts_script_agent import generate_standalone_short, extract_short_from_longform
 from fact_check_agent import verify_script
 from tts_agent import run_tts
-from visual_agent import fetch_pexels_images, fetch_wikimedia
+from visual_agent import fetch_pixabay_images, fetch_wikimedia
 from shorts_visual_agent import reframe_to_vertical
 from shorts_caption_agent import get_word_timestamps, group_words
 from shorts_assembly_agent import assemble_short
@@ -35,11 +35,11 @@ def run_shorts_pipeline(mode="standalone", long_script_path=None):
     raw_images = []
     for kw_line in keyword_lines:
         for kw in kw_line.split(","):
-            imgs = fetch_wikimedia(kw.strip()) or fetch_pexels_images(kw.strip(), count=2)
+            imgs = fetch_wikimedia(kw.strip()) or fetch_pixabay_images(kw.strip(), count=2)
             raw_images.extend(imgs)
 
     if not raw_images:
-        raw_images = fetch_pexels_images("vintage mystery", count=6)
+        raw_images = fetch_pixabay_images("vintage mystery", count=6)
 
     os.makedirs("assets", exist_ok=True)
     vertical_images = []
