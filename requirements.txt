@@ -1,0 +1,10 @@
+google-generativeai
+edge-tts
+requests
+moviepy==1.0.3
+Pillow==9.5.0
+faster-whisper
+google-api-python-client
+google-auth
+google-auth-oauthlib
+python-dotenv

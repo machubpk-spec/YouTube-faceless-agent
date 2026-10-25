@@ -1,0 +1,22 @@
+[
+  {"type": "true_crime", "title": "The Alcatraz Escape of 1962", "status": "historical_unsolved", "year": 1962},
+  {"type": "history", "title": "The Dancing Plague of 1518", "status": "historical", "year": 1518},
+  {"type": "true_crime", "title": "H.H. Holmes and the Chicago Murder Castle", "status": "convicted_historical", "year": 1893},
+  {"type": "history", "title": "The Disappearance of the Roanoke Colony", "status": "historical", "year": 1590},
+  {"type": "true_crime", "title": "The D.B. Cooper Hijacking", "status": "historical_unsolved", "year": 1971},
+  {"type": "history", "title": "The Great Molasses Flood of Boston", "status": "historical", "year": 1919},
+  {"type": "true_crime", "title": "The Isabella Stewart Gardner Museum Heist", "status": "historical_unsolved", "year": 1990},
+  {"type": "history", "title": "The Dyatlov Pass Incident", "status": "historical", "year": 1959},
+  {"type": "true_crime", "title": "The Hinterkaifeck Murders", "status": "historical_unsolved", "year": 1922},
+  {"type": "history", "title": "The Mary Celeste Ghost Ship Mystery", "status": "historical", "year": 1872},
+  {"type": "true_crime", "title": "The Black Dahlia Case", "status": "historical_unsolved", "year": 1947},
+  {"type": "history", "title": "The Emu War of Australia", "status": "historical", "year": 1932},
+  {"type": "true_crime", "title": "The Brinks Mat Robbery", "status": "convicted_historical", "year": 1983},
+  {"type": "history", "title": "The Wreck of the Batavia", "status": "historical", "year": 1629},
+  {"type": "true_crime", "title": "The Somerton Man Case", "status": "historical", "year": 1948},
+  {"type": "history", "title": "The Year Without a Summer", "status": "historical", "year": 1816},
+  {"type": "true_crime", "title": "Bonnie and Clyde's Final Ambush", "status": "historical", "year": 1934},
+  {"type": "history", "title": "The Amber Room Disappearance", "status": "historical", "year": 1941},
+  {"type": "true_crime", "title": "The Great Train Robbery of 1963", "status": "convicted_historical", "year": 1963},
+  {"type": "history", "title": "The Siege of Masada", "status": "historical", "year": 73}
+]
