@@ -5,7 +5,7 @@ from topics import get_next_topic
 from script_agent import generate_script
 from fact_check_agent import verify_script
 from tts_agent import run_tts
-from visual_agent import fetch_pexels_images, fetch_wikimedia
+from visual_agent import fetch_pixabay_images, fetch_wikimedia
 from assembly_agent import assemble_video
 from thumbnail_agent import make_thumbnail
 from upload_agent import upload_video
