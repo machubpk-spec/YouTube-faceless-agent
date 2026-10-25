@@ -32,11 +32,11 @@ def run_pipeline(long_form=True, save_script_path=None):
     images = []
     for kw_line in keywords:
         kw = kw_line.split(",")[0].strip()
-        imgs = fetch_wikimedia(kw) or fetch_pexels_images(kw, count=1)
+        imgs = fetch_wikimedia(kw) or fetch_pixabay_images(kw, count=1)
         images.extend(imgs)
 
     if not images:
-        images = fetch_pexels_images("dark mystery history", count=5)
+        images = fetch_pixabay_images("dark mystery history", count=5)
 
     assemble_video(images, "voice.mp3", "bg_music.mp3", "final.mp4")
     make_thumbnail(images[0], topic["title"], "thumb.jpg")
