@@ -1,11 +1,5 @@
 [
   {
-    "type": "history",
-    "title": "The Dancing Plague of 1518",
-    "status": "historical",
-    "year": 1518
-  },
-  {
     "type": "true_crime",
     "title": "H.H. Holmes and the Chicago Murder Castle",
     "status": "convicted_historical",
@@ -118,5 +112,11 @@
     "title": "The Alcatraz Escape of 1962",
     "status": "historical_unsolved",
     "year": 1962
+  },
+  {
+    "type": "history",
+    "title": "The Dancing Plague of 1518",
+    "status": "historical",
+    "year": 1518
   }
 ]
