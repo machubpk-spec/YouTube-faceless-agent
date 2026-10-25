@@ -3,22 +3,25 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
-PEXELS_KEY = os.getenv("PEXELS_API_KEY")
+PIXABAY_KEY = os.getenv("PIXABAY_API_KEY")
 HEADERS_WIKI = {"User-Agent": "HistoryDocBot/1.0 (https://github.com/)"}
 
-def fetch_pexels_images(query, count=2, out_dir="assets"):
+def fetch_pixabay_images(query, count=2, out_dir="assets"):
     os.makedirs(out_dir, exist_ok=True)
-    headers = {"Authorization": PEXELS_KEY}
-    r = requests.get(f"https://api.pexels.com/v1/search?query={query}&per_page={count}", headers=headers)
+    url = f"https://pixabay.com/api/?key={PIXABAY_KEY}&q={query}&image_type=photo&per_page={max(count,3)}"
+    r = requests.get(url)
     paths = []
     if r.status_code == 200:
-        for i, photo in enumerate(r.json().get("photos", [])):
-            img_data = requests.get(photo["src"]["large"]).content
-            safe_name = "".join(c if c.isalnum() else "_" for c in query)
-            path = f"{out_dir}/{safe_name}_{i}.jpg"
-            with open(path, "wb") as f:
-                f.write(img_data)
-            paths.append(path)
+        hits = r.json().get("hits", [])[:count]
+        for i, hit in enumerate(hits):
+            img_url = hit.get("largeImageURL")
+            if img_url:
+                img_data = requests.get(img_url).content
+                safe_name = "".join(c if c.isalnum() else "_" for c in query)
+                path = f"{out_dir}/{safe_name}_{i}.jpg"
+                with open(path, "wb") as f:
+                    f.write(img_data)
+                paths.append(path)
     return paths
 
 def fetch_wikimedia(query, out_dir="assets"):
