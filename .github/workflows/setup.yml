@@ -1,0 +1,621 @@
+name: 0 - Bootstrap Project Files
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Create folders
+        run: mkdir -p assets scripts .github/workflows
+
+      - name: Write topics.py, fact_check_agent.py, tts_agent.py
+        run: |
+          cat << 'PYEOF' > topics.py
+          import json
+
+          def get_next_topic(path="queue.json"):
+              with open(path, "r", encoding="utf-8") as f:
+                  queue = json.load(f)
+              topic = queue.pop(0)
+              queue.append(topic)
+              with open(path, "w", encoding="utf-8") as f:
+                  json.dump(queue, f, indent=2)
+              return topic
+          PYEOF
+
+          cat << 'PYEOF' > fact_check_agent.py
+          import os
+          import google.generativeai as genai
+          from dotenv import load_dotenv
+
+          load_dotenv()
+          genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+          model = genai.GenerativeModel("gemini-1.5-flash")
+
+          FACT_CHECK_PROMPT = """
+          Review this script about {title} ({year}) for historical/legal accuracy.
+          - Ensure dates, names, and locations are factual.
+          - Add "allegedly" or "reportedly" to any unproven claims.
+          - Keep all [SEGMENT], [HOOK], [BODY], [PAYOFF] tags and KEYWORDS: lines intact.
+          - Output ONLY the revised script text.
+
+          Script:
+          {script}
+          """
+
+          def verify_script(script_text, topic):
+              prompt = FACT_CHECK_PROMPT.format(title=topic["title"], year=topic["year"], script=script_text)
+              return model.generate_content(prompt).text
+          PYEOF
+
+          cat << 'PYEOF' > tts_agent.py
+          import edge_tts
+          import asyncio
+
+          VOICE = "en-US-ChristopherNeural"
+
+          async def generate_voiceover(text, output_path="voice.mp3"):
+              communicate = edge_tts.Communicate(text, VOICE, rate="-5%")
+              await communicate.save(output_path)
+
+          def run_tts(text, output_path="voice.mp3"):
+              asyncio.run(generate_voiceover(text, output_path))
+          PYEOF
+
+      - name: Write script_agent.py, shorts_script_agent.py
+        run: |
+          cat << 'PYEOF' > script_agent.py
+          import os
+          import google.generativeai as genai
+          from dotenv import load_dotenv
+
+          load_dotenv()
+          genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+          model = genai.GenerativeModel("gemini-1.5-flash")
+
+          SCRIPT_PROMPT = """
+          Write a documentary narration script about: {title} ({year}).
+          Style: {style}
+          Requirements:
+          - Hook in first 2 sentences (no generic clichés)
+          - Only state documented facts. Use "allegedly" or "according to reports" for disputed claims
+          - Length: {length}
+          - Break script into labeled segments like [SEGMENT 1], [SEGMENT 2]
+          - Include 1 keyword line per segment in exact format: KEYWORDS: term1, term2
+          - Do not include stage directions or narrator labels, only spoken words and the tags above.
+          """
+
+          def generate_script(topic, long_form=True):
+              length = "1500-1800 words" if long_form else "130-150 words"
+              style = "investigative true crime documentary" if topic["type"] == "true_crime" else "gripping historical documentary"
+              prompt = SCRIPT_PROMPT.format(title=topic["title"], year=topic["year"], style=style, length=length)
+              return model.generate_content(prompt).text
+          PYEOF
+
+          cat << 'PYEOF' > shorts_script_agent.py
+          import os
+          import google.generativeai as genai
+          from dotenv import load_dotenv
+
+          load_dotenv()
+          genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+          model = genai.GenerativeModel("gemini-1.5-flash")
+
+          STANDALONE_PROMPT = """
+          Write a 45-second YouTube Shorts script about: {title} ({year}).
+          Rules:
+          - First sentence after [HOOK] must be a shocking scroll-stopper (under 12 words).
+          - Total word count: 110-130 words.
+          - Format strictly with [HOOK], [BODY], [PAYOFF] labels.
+          - Include 3 KEYWORDS: lines throughout for image search.
+          """
+
+          EXTRACT_PROMPT = """
+          From this documentary script, extract ONE self-contained 45-second YouTube Short (110-130 words):
+          ---
+          {full_script}
+          ---
+          Format strictly with [HOOK], [BODY], [PAYOFF] labels and 3 KEYWORDS: lines.
+          """
+
+          def generate_standalone_short(topic):
+              return model.generate_content(STANDALONE_PROMPT.format(title=topic["title"], year=topic["year"])).text
+
+          def extract_short_from_longform(full_script):
+              return model.generate_content(EXTRACT_PROMPT.format(full_script=full_script)).text
+          PYEOF
+
+      - name: Write visual_agent.py, shorts_visual_agent.py, shorts_caption_agent.py
+        run: |
+          cat << 'PYEOF' > visual_agent.py
+          import os
+          import requests
+          from dotenv import load_dotenv
+
+          load_dotenv()
+          PEXELS_KEY = os.getenv("PEXELS_API_KEY")
+          HEADERS_WIKI = {"User-Agent": "HistoryDocBot/1.0 (https://github.com/)"}
+
+          def fetch_pexels_images(query, count=2, out_dir="assets"):
+              os.makedirs(out_dir, exist_ok=True)
+              headers = {"Authorization": PEXELS_KEY}
+              r = requests.get(f"https://api.pexels.com/v1/search?query={query}&per_page={count}", headers=headers)
+              paths = []
+              if r.status_code == 200:
+                  for i, photo in enumerate(r.json().get("photos", [])):
+                      img_data = requests.get(photo["src"]["large"]).content
+                      safe_name = "".join(c if c.isalnum() else "_" for c in query)
+                      path = f"{out_dir}/{safe_name}_{i}.jpg"
+                      with open(path, "wb") as f:
+                          f.write(img_data)
+                      paths.append(path)
+              return paths
+
+          def fetch_wikimedia(query, out_dir="assets"):
+              os.makedirs(out_dir, exist_ok=True)
+              url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={query}&prop=imageinfo&iiprop=url&format=json"
+              r = requests.get(url, headers=HEADERS_WIKI)
+              paths = []
+              if r.status_code == 200:
+                  pages = r.json().get("query", {}).get("pages", {})
+                  for page in pages.values():
+                      img_url = page.get("imageinfo", [{}])[0].get("url", "")
+                      if img_url.lower().endswith((".jpg", ".jpeg", ".png")):
+                          img_resp = requests.get(img_url, headers=HEADERS_WIKI)
+                          if img_resp.status_code == 200:
+                              safe_name = "".join(c if c.isalnum() else "_" for c in query)
+                              path = f"{out_dir}/{safe_name}_wiki.jpg"
+                              with open(path, "wb") as f:
+                                  f.write(img_resp.content)
+                              paths.append(path)
+                              break
+              return paths
+          PYEOF
+
+          cat << 'PYEOF' > shorts_visual_agent.py
+          from PIL import Image, ImageFilter
+
+          CANVAS_W, CANVAS_H = 1080, 1920
+
+          def reframe_to_vertical(image_path, output_path):
+              img = Image.open(image_path).convert("RGB")
+              bg = img.resize((CANVAS_W, CANVAS_H)).filter(ImageFilter.GaussianBlur(25))
+              bg = bg.point(lambda p: int(p * 0.45))
+
+              scale = CANVAS_W / img.width
+              fg_h = min(int(img.height * scale), CANVAS_H)
+              fg = img.resize((CANVAS_W, fg_h))
+
+              canvas = bg.copy()
+              canvas.paste(fg, (0, (CANVAS_H - fg_h) // 2))
+              canvas.save(output_path)
+              return output_path
+          PYEOF
+
+          cat << 'PYEOF' > shorts_caption_agent.py
+          from faster_whisper import WhisperModel
+
+          model = WhisperModel("base", device="cpu", compute_type="int8")
+
+          def get_word_timestamps(audio_path):
+              segments, _ = model.transcribe(audio_path, word_timestamps=True)
+              words = []
+              for seg in segments:
+                  if seg.words:
+                      for w in seg.words:
+                          words.append({"word": w.word.strip(), "start": w.start, "end": w.end})
+              return words
+
+          def group_words(words, group_size=3):
+              groups = []
+              for i in range(0, len(words), group_size):
+                  chunk = words[i:i+group_size]
+                  groups.append({
+                      "text": " ".join(w["word"] for w in chunk).upper(),
+                      "start": chunk[0]["start"],
+                      "end": chunk[-1]["end"]
+                  })
+              return groups
+          PYEOF
+
+      - name: Write assembly_agent.py, shorts_assembly_agent.py
+        run: |
+          cat << 'PYEOF' > assembly_agent.py
+          from moviepy.editor import ImageClip, AudioFileClip, CompositeAudioClip, concatenate_videoclips
+          from PIL import Image
+
+          def prepare_16_9(image_path):
+              img = Image.open(image_path).convert("RGB").resize((1920, 1080))
+              img.save(image_path)
+              return image_path
+
+          def ken_burns(image_path, duration):
+              prepare_16_9(image_path)
+              clip = ImageClip(image_path).set_duration(duration)
+              clip = clip.resize(lambda t: 1 + 0.015 * t)
+              return clip.set_position("center")
+
+          def assemble_video(image_paths, audio_path, music_path, output_path="final.mp4"):
+              audio = AudioFileClip(audio_path)
+              duration_per_img = audio.duration / max(len(image_paths), 1)
+
+              clips = [ken_burns(img, duration_per_img) for img in image_paths]
+              video = concatenate_videoclips(clips, method="compose").set_duration(audio.duration)
+
+              music = AudioFileClip(music_path).volumex(0.08)
+              if music.duration < audio.duration:
+                  music = music.loop(duration=audio.duration)
+              else:
+                  music = music.subclip(0, audio.duration)
+
+              final_audio = CompositeAudioClip([audio, music])
+              video = video.set_audio(final_audio)
+              video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
+          PYEOF
+
+          cat << 'PYEOF' > shorts_assembly_agent.py
+          from moviepy.editor import (
+              ImageClip, AudioFileClip, CompositeAudioClip,
+              CompositeVideoClip, TextClip, concatenate_videoclips
+          )
+
+          CANVAS_W, CANVAS_H = 1080, 1920
+          FONT = "DejaVu-Sans-Bold"
+
+          def ken_burns_vertical(image_path, duration, zoom_direction="in"):
+              clip = ImageClip(image_path).set_duration(duration)
+              if zoom_direction == "in":
+                  clip = clip.resize(lambda t: 1 + 0.03 * t)
+              else:
+                  clip = clip.resize(lambda t: 1.08 - 0.03 * t)
+              return clip.set_position("center")
+
+          def make_caption_clips(word_groups):
+              clips = []
+              for g in word_groups:
+                  txt = TextClip(
+                      g["text"],
+                      fontsize=75,
+                      font=FONT,
+                      color="white",
+                      stroke_color="black",
+                      stroke_width=3,
+                      method="caption",
+                      size=(CANVAS_W - 120, None)
+                  ).set_start(g["start"]).set_end(g["end"]).set_position(("center", int(CANVAS_H * 0.65)))
+                  clips.append(txt)
+              return clips
+
+          def make_hook_text(hook_line, duration=2.5):
+              txt = TextClip(
+                  hook_line.upper()[:70],
+                  fontsize=80,
+                  font=FONT,
+                  color="yellow",
+                  stroke_color="black",
+                  stroke_width=4,
+                  method="caption",
+                  size=(CANVAS_W - 100, None)
+              )
+              return txt.set_start(0).set_duration(duration).set_position(("center", int(CANVAS_H * 0.25)))
+
+          def assemble_short(image_paths, audio_path, music_path, word_groups, hook_line, output_path="final_short.mp4"):
+              audio = AudioFileClip(audio_path)
+              total_duration = audio.duration
+
+              per_img_duration = 2.5
+              n_needed = int(total_duration / per_img_duration) + 2
+              cycled = (image_paths * ((n_needed // len(image_paths)) + 1))[:n_needed]
+
+              clips = [
+                  ken_burns_vertical(img, per_img_duration, "in" if i % 2 == 0 else "out")
+                  for i, img in enumerate(cycled)
+              ]
+              video = concatenate_videoclips(clips, method="compose").subclip(0, total_duration)
+
+              caption_clips = make_caption_clips(word_groups)
+              hook_clip = make_hook_text(hook_line)
+
+              final_video = CompositeVideoClip([video] + caption_clips + [hook_clip], size=(CANVAS_W, CANVAS_H))
+
+              music = AudioFileClip(music_path).volumex(0.08)
+              if music.duration < total_duration:
+                  music = music.loop(duration=total_duration)
+              else:
+                  music = music.subclip(0, total_duration)
+
+              final_video = final_video.set_audio(CompositeAudioClip([audio, music]))
+              final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
+          PYEOF
+
+      - name: Write thumbnail_agent.py
+        run: |
+          cat << 'PYEOF' > thumbnail_agent.py
+          from PIL import Image, ImageDraw, ImageFont
+
+          FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          def make_thumbnail(image_path, title_text, output_path="thumb.jpg"):
+              img = Image.open(image_path).convert("RGBA").resize((1280, 720))
+              overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+              od = ImageDraw.Draw(overlay)
+              od.rectangle([0, 460, 1280, 720], fill=(0, 0, 0, 180))
+              img = Image.alpha_composite(img, overlay)
+
+              draw = ImageDraw.Draw(img)
+              try:
+                  font = ImageFont.truetype(FONT_PATH, 54)
+              except Exception:
+                  font = ImageFont.load_default()
+
+              draw.text((40, 540), title_text.upper()[:38], font=font, fill="white")
+              img.convert("RGB").save(output_path)
+          PYEOF
+
+      - name: Write upload_agent.py, shorts_upload_agent.py
+        run: |
+          cat << 'PYEOF' > upload_agent.py
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          from google.oauth2.credentials import Credentials
+
+          def upload_video(video_path, title, description, tags, thumbnail_path, creds_path="token.json"):
+              creds = Credentials.from_authorized_user_file(creds_path)
+              youtube = build("youtube", "v3", credentials=creds)
+
+              body = {
+                  "snippet": {
+                      "title": title[:95],
+                      "description": description,
+                      "tags": tags,
+                      "categoryId": "27"
+                  },
+                  "status": {
+                      "privacyStatus": "public",
+                      "selfDeclaredMadeForKids": False
+                  }
+              }
+              media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+              response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
+
+              try:
+                  youtube.thumbnails().set(videoId=response["id"], media_body=MediaFileUpload(thumbnail_path)).execute()
+              except Exception as e:
+                  print(f"Thumbnail upload skipped: {e}")
+
+              return response["id"]
+          PYEOF
+
+          cat << 'PYEOF' > shorts_upload_agent.py
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          from google.oauth2.credentials import Credentials
+
+          def upload_short(video_path, hook_line, topic_title, creds_path="token.json"):
+              creds = Credentials.from_authorized_user_file(creds_path)
+              youtube = build("youtube", "v3", credentials=creds)
+
+              clean_hook = hook_line.replace("\n", " ").strip()[:75]
+              title = f"{clean_hook} #Shorts"
+              description = f"{clean_hook}\n\nTopic: {topic_title}\n#Shorts #TrueCrime #History #Documentary"
+
+              body = {
+                  "snippet": {
+                      "title": title,
+                      "description": description,
+                      "tags": ["Shorts", "true crime", "history", topic_title],
+                      "categoryId": "27"
+                  },
+                  "status": {
+                      "privacyStatus": "public",
+                      "selfDeclaredMadeForKids": False
+                  }
+              }
+              media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+              response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
+              return response["id"]
+          PYEOF
+
+      - name: Write main.py, main_shorts.py
+        run: |
+          cat << 'PYEOF' > main.py
+          import argparse
+          import os
+          import re
+          from topics import get_next_topic
+          from script_agent import generate_script
+          from fact_check_agent import verify_script
+          from tts_agent import run_tts
+          from visual_agent import fetch_pexels_images, fetch_wikimedia
+          from assembly_agent import assemble_video
+          from thumbnail_agent import make_thumbnail
+          from upload_agent import upload_video
+
+          def clean_narration(script_text):
+              cleaned = re.sub(r"\[.*?\]", "", script_text)
+              cleaned = re.sub(r"KEYWORDS:.*", "", cleaned)
+              return cleaned.strip()
+
+          def run_pipeline(long_form=True, save_script_path=None):
+              topic = get_next_topic()
+              raw_script = generate_script(topic, long_form)
+              script = verify_script(raw_script, topic)
+
+              if save_script_path:
+                  os.makedirs(os.path.dirname(save_script_path), exist_ok=True)
+                  with open(save_script_path, "w", encoding="utf-8") as f:
+                      f.write(script)
+
+              narration_text = clean_narration(script)
+              run_tts(narration_text, "voice.mp3")
+
+              keywords = re.findall(r"KEYWORDS:\s*(.+)", script)
+              images = []
+              for kw_line in keywords:
+                  kw = kw_line.split(",")[0].strip()
+                  imgs = fetch_wikimedia(kw) or fetch_pexels_images(kw, count=1)
+                  images.extend(imgs)
+
+              if not images:
+                  images = fetch_pexels_images("dark mystery history", count=5)
+
+              assemble_video(images, "voice.mp3", "bg_music.mp3", "final.mp4")
+              make_thumbnail(images[0], topic["title"], "thumb.jpg")
+
+              video_id = upload_video(
+                  "final.mp4",
+                  title=f"{topic['title']} ({topic['year']}) - The Untold Story",
+                  description=f"A documentary deep dive into {topic['title']} ({topic['year']}).\n\n#truecrime #history #documentary",
+                  tags=["true crime", "history", "documentary", topic["title"]],
+                  thumbnail_path="thumb.jpg"
+              )
+              print(f"Uploaded Long-Form Video ID: {video_id}")
+
+          if __name__ == "__main__":
+              parser = argparse.ArgumentParser()
+              parser.add_argument("--long", action="store_true", default=True)
+              parser.add_argument("--save-script", type=str, default=None)
+              args = parser.parse_args()
+              run_pipeline(long_form=args.long, save_script_path=args.save_script)
+          PYEOF
+
+          cat << 'PYEOF' > main_shorts.py
+          import argparse
+          import re
+          import os
+          from topics import get_next_topic
+          from shorts_script_agent import generate_standalone_short, extract_short_from_longform
+          from fact_check_agent import verify_script
+          from tts_agent import run_tts
+          from visual_agent import fetch_pexels_images, fetch_wikimedia
+          from shorts_visual_agent import reframe_to_vertical
+          from shorts_caption_agent import get_word_timestamps, group_words
+          from shorts_assembly_agent import assemble_short
+          from shorts_upload_agent import upload_short
+
+          def parse_script_sections(script_text):
+              hook = re.search(r"\[HOOK\](.*?)\[BODY\]", script_text, re.S)
+              full_text = re.sub(r"\[.*?\]|KEYWORDS:.*", "", script_text).strip()
+              keywords = re.findall(r"KEYWORDS:\s*(.+)", script_text)
+              hook_line = hook.group(1).strip() if hook else full_text.split(".")[0]
+              return hook_line, full_text, keywords
+
+          def run_shorts_pipeline(mode="standalone", long_script_path=None):
+              topic = get_next_topic()
+
+              if mode == "extract" and long_script_path and os.path.exists(long_script_path):
+                  with open(long_script_path, encoding="utf-8") as f:
+                      long_script = f.read()
+                  script = extract_short_from_longform(long_script)
+              else:
+                  raw_script = generate_standalone_short(topic)
+                  script = verify_script(raw_script, topic)
+
+              hook_line, narration_text, keyword_lines = parse_script_sections(script)
+              run_tts(narration_text, "short_voice.mp3")
+
+              raw_images = []
+              for kw_line in keyword_lines:
+                  for kw in kw_line.split(","):
+                      imgs = fetch_wikimedia(kw.strip()) or fetch_pexels_images(kw.strip(), count=2)
+                      raw_images.extend(imgs)
+
+              if not raw_images:
+                  raw_images = fetch_pexels_images("vintage mystery", count=6)
+
+              os.makedirs("assets", exist_ok=True)
+              vertical_images = []
+              for i, img in enumerate(raw_images):
+                  out_path = f"assets/vertical_{i}.jpg"
+                  reframe_to_vertical(img, out_path)
+                  vertical_images.append(out_path)
+
+              words = get_word_timestamps("short_voice.mp3")
+              word_groups = group_words(words, group_size=3)
+
+              assemble_short(
+                  vertical_images,
+                  "short_voice.mp3",
+                  "bg_music_energetic.mp3",
+                  word_groups,
+                  hook_line,
+                  output_path="final_short.mp4"
+              )
+
+              video_id = upload_short("final_short.mp4", hook_line, topic["title"])
+              print(f"Uploaded Short Video ID: {video_id}")
+
+          if __name__ == "__main__":
+              parser = argparse.ArgumentParser()
+              parser.add_argument("--mode", type=str, default="standalone")
+              parser.add_argument("--source", type=str, default=None)
+              args = parser.parse_args()
+              run_shorts_pipeline(mode=args.mode, long_script_path=args.source)
+          PYEOF
+
+      - name: Write queue.json, requirements.txt, .gitignore
+        run: |
+          cat << 'JSONEOF' > queue.json
+          [
+            {"type": "true_crime", "title": "The Alcatraz Escape of 1962", "status": "historical_unsolved", "year": 1962},
+            {"type": "history", "title": "The Dancing Plague of 1518", "status": "historical", "year": 1518},
+            {"type": "true_crime", "title": "H.H. Holmes and the Chicago Murder Castle", "status": "convicted_historical", "year": 1893},
+            {"type": "history", "title": "The Disappearance of the Roanoke Colony", "status": "historical", "year": 1590},
+            {"type": "true_crime", "title": "The D.B. Cooper Hijacking", "status": "historical_unsolved", "year": 1971},
+            {"type": "history", "title": "The Great Molasses Flood of Boston", "status": "historical", "year": 1919},
+            {"type": "true_crime", "title": "The Isabella Stewart Gardner Museum Heist", "status": "historical_unsolved", "year": 1990},
+            {"type": "history", "title": "The Dyatlov Pass Incident", "status": "historical", "year": 1959},
+            {"type": "true_crime", "title": "The Hinterkaifeck Murders", "status": "historical_unsolved", "year": 1922},
+            {"type": "history", "title": "The Mary Celeste Ghost Ship Mystery", "status": "historical", "year": 1872},
+            {"type": "true_crime", "title": "The Black Dahlia Case", "status": "historical_unsolved", "year": 1947},
+            {"type": "history", "title": "The Emu War of Australia", "status": "historical", "year": 1932},
+            {"type": "true_crime", "title": "The Brinks Mat Robbery", "status": "convicted_historical", "year": 1983},
+            {"type": "history", "title": "The Wreck of the Batavia", "status": "historical", "year": 1629},
+            {"type": "true_crime", "title": "The Somerton Man Case", "status": "historical", "year": 1948},
+            {"type": "history", "title": "The Year Without a Summer", "status": "historical", "year": 1816},
+            {"type": "true_crime", "title": "Bonnie and Clyde's Final Ambush", "status": "historical", "year": 1934},
+            {"type": "history", "title": "The Amber Room Disappearance", "status": "historical", "year": 1941},
+            {"type": "true_crime", "title": "The Great Train Robbery of 1963", "status": "convicted_historical", "year": 1963},
+            {"type": "history", "title": "The Siege of Masada", "status": "historical", "year": 73}
+          ]
+          JSONEOF
+
+          cat << 'REQEOF' > requirements.txt
+          google-generativeai
+          edge-tts
+          requests
+          moviepy==1.0.3
+          Pillow==9.5.0
+          faster-whisper
+          google-api-python-client
+          google-auth
+          google-auth-oauthlib
+          python-dotenv
+          REQEOF
+
+          cat << 'GITEOF' > .gitignore
+          venv/
+          .env
+          token.json
+          client_secret.json
+          *.mp3
+          *.mp4
+          assets/*
+          __pycache__/
+          GITEOF
+
+      - name: Commit and push all generated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Bootstrap: auto-generated full project structure" || echo "Nothing to commit"
+          git push
