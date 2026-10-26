@@ -23,7 +23,7 @@ def _try_pollinations(full_prompt: str, output_path: str, seed: int, width=1024,
             "height": height,
             "seed": seed,
             "nologo": "true",
-            "model": "flux"
+            "model": "turbo"
         }
         response = requests.get(url, params=params, timeout=timeout)
         response.raise_for_status()
