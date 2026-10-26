@@ -1,11 +1,10 @@
 import os
-import google.generativeai as genai
+import time
+from groq import Groq
 from dotenv import load_dotenv
-from google.api_core import exceptions, retry
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-3.8-flash") # Note: I corrected the model name to 1.5-flash as 3.8 does not exist
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 FACT_CHECK_PROMPT = """
 Review this script about {title} ({year}) for historical/legal accuracy.
@@ -21,30 +20,19 @@ Script:
 def verify_script(script_text, topic):
     prompt = FACT_CHECK_PROMPT.format(title=topic["title"], year=topic["year"], script=script_text)
 
-    custom_retry = retry.Retry(
-        predicate=retry.if_exception_type(
-            exceptions.DeadlineExceeded,
-            exceptions.ServiceUnavailable,
-            exceptions.InternalServerError,
-        ),
-        initial=5,
-        maximum=60,
-        multiplier=2,
-        timeout=900,  # overall retry budget: 15 minutes
-    )
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=120
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            print(f"[verify_script] Attempt {attempt + 1} failed: {e}")
+            if attempt < 2:
+                time.sleep(5 * (attempt + 1))
 
-    response = model.generate_content(
-        prompt,
-        stream=True,
-        request_options={
-            "timeout": 900,
-            "retry": custom_retry,
-        },
-    )
-
-    full_text = ""
-    for chunk in response:
-        if chunk.text:
-            full_text += chunk.text
-
-    return full_text
+    raise RuntimeError(f"verify_script failed after 3 attempts: {last_error}")
