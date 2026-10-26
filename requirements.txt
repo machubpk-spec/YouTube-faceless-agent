@@ -1,6 +1,6 @@
 groq
 google-genai
-edge-tts
+edge-tts>=6.1.19
 mutagen
 moviepy==1.0.3
 google-api-python-client
