@@ -1,6 +1,3 @@
-# image_agent.py
-# Generates consistent character illustrations using Gemini image generation
-
 import os
 import base64
 from google import genai
