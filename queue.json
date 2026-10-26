@@ -12,8 +12,10 @@
     "id": "vid_002",
     "theme": "counting animals on the farm",
     "character": "Benny the Bunny",
-    "status": "pending",
-    "created_at": "2025-01-01T00:00:00Z"
+    "status": "completed",
+    "created_at": "2025-01-01T00:00:00Z",
+    "video_id": "kQXoFZ8AWwg",
+    "final_title": "Benny Counts Farm Friends"
   },
   {
     "id": "vid_003",
