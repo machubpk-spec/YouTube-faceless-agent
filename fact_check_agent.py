@@ -1,9 +1,12 @@
 import os
 import re
+import json
 from groq import Groq
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
-GROQ_MODEL = "llama-3.3-70b-versatile"
+
+GROQ_MODEL = "openai/gpt-oss-20b"           # for our custom JSON-based review
+SAFEGUARD_MODEL = "openai/gpt-oss-safeguard-20b"  # purpose-built moderation model
 
 BANNED_KEYWORDS = [
     "scary", "kill", "death", "blood", "gun", "weapon", "fight",
@@ -12,7 +15,6 @@ BANNED_KEYWORDS = [
 
 
 def keyword_safety_check(script_data: dict) -> tuple[bool, list]:
-    """Fast local check before spending API calls"""
     issues = []
     full_text = " ".join(
         scene["narration"].lower() for scene in script_data.get("scenes", [])
@@ -23,8 +25,32 @@ def keyword_safety_check(script_data: dict) -> tuple[bool, list]:
     return (len(issues) == 0, issues)
 
 
+def safeguard_check(script_data: dict) -> dict:
+    """
+    Uses Groq's dedicated moderation model as a fast first-pass filter
+    before the more expensive structured AI review.
+    """
+    full_text = "\n".join(
+        s["narration"] for s in script_data.get("scenes", [])
+    )
+
+    response = client.chat.completions.create(
+        model=SAFEGUARD_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": f"Review this children's video script for any unsafe, "
+                            f"scary, violent, or inappropriate content for ages 2-6:\n\n{full_text}"
+            }
+        ],
+        temperature=0,
+        max_tokens=300,
+    )
+    return {"raw_response": response.choices[0].message.content}
+
+
 def ai_safety_check(script_data: dict) -> dict:
-    """Deeper AI review for age-appropriateness and COPPA alignment"""
+    """Deeper structured AI review for age-appropriateness and COPPA alignment"""
     narration_combined = "\n".join(
         f"Scene {s['scene_number']}: {s['narration']}"
         for s in script_data.get("scenes", [])
@@ -59,26 +85,25 @@ Return ONLY JSON:
     )
     content = response.choices[0].message.content
     match = re.search(r'\{.*\}', content, re.DOTALL)
-    import json
     return json.loads(match.group(0)) if match else {"is_safe": False, "issues": ["Parse error"]}
 
 
 def full_safety_pipeline(script_data: dict) -> dict:
-    """Run both checks, return final verdict"""
+    """Three-layer check: keywords -> safeguard model -> structured AI review"""
     keyword_ok, keyword_issues = keyword_safety_check(script_data)
-
     if not keyword_ok:
-        return {
-            "approved": False,
-            "issues": keyword_issues,
-            "stage": "keyword_filter"
-        }
+        return {"approved": False, "issues": keyword_issues, "stage": "keyword_filter"}
+
+    # Safeguard model acts as a sanity check (logged, not hard-blocking by itself
+    # since its output format isn't guaranteed structured JSON)
+    safeguard_result = safeguard_check(script_data)
 
     ai_result = ai_safety_check(script_data)
     return {
         "approved": ai_result.get("is_safe", False) and ai_result.get("recommendation") == "approve",
         "issues": ai_result.get("issues", []),
         "stage": "ai_review",
+        "safeguard_raw": safeguard_result["raw_response"],
         "details": ai_result
     }
 
