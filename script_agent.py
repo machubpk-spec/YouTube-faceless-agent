@@ -2,23 +2,19 @@ import os
 import json
 import re
 from groq import Groq
-from character_config import CHARACTER_NAME, CHARACTER_BIBLE, TARGET_REGIONS
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
-
-# IMPORTANT: Run list_groq_models.py to confirm this model ID is still live
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 def _extract_json(text):
-    """Groq sometimes wraps JSON in markdown fences - strip them"""
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         return json.loads(match.group(0))
     raise ValueError("No valid JSON found in model response")
 
 
-def generate_script(theme: str, character_name: str = CHARACTER_NAME) -> dict:
+def generate_script(theme: str, character_name: str) -> dict:
     prompt = f"""
 You are a children's YouTube Shorts scriptwriter for ages 2-6, targeting
 US, UK, Canada, and European English-speaking audiences.
@@ -58,14 +54,12 @@ Return ONLY valid JSON in this exact format:
   "seo_tags": ["tag1", "tag2", "..."]
 }}
 """
-
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.8,
         max_tokens=2000,
     )
-
     content = response.choices[0].message.content
     script_data = _extract_json(content)
     script_data["character_name"] = character_name
@@ -73,18 +67,16 @@ Return ONLY valid JSON in this exact format:
     return script_data
 
 
-def generate_titles(theme: str, character_name: str = CHARACTER_NAME) -> list:
-    """Separate, focused SEO title generation"""
+def generate_titles(theme: str, character_name: str) -> list:
     prompt = f"""
 Generate 5 YouTube Shorts titles for a kids video about "{theme}" featuring
 "{character_name}". 
 
 RULES:
-- Front-load the main keyword (e.g. "Learn Colors with..." not "Join us to learn...")
+- Front-load the main keyword
 - Max 60 characters
-- Include high-search terms: kids songs, nursery rhymes, learning video,
-  toddler, preschool
-- No misleading clickbait (YouTube penalizes kids content for mismatches)
+- Include high-search terms: kids songs, nursery rhymes, learning video, toddler, preschool
+- No misleading clickbait
 
 Return ONLY a JSON array of 5 strings, nothing else.
 """
@@ -97,9 +89,3 @@ Return ONLY a JSON array of 5 strings, nothing else.
     content = response.choices[0].message.content
     match = re.search(r'\[.*\]', content, re.DOTALL)
     return json.loads(match.group(0)) if match else []
-
-
-if __name__ == "__main__":
-    # Quick test
-    result = generate_script("learning colors with balloons")
-    print(json.dumps(result, indent=2))
