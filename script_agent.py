@@ -1,11 +1,10 @@
 import os
 import time
-import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-3.8-flash")
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 SCRIPT_PROMPT = """
 Write a documentary narration script about: {title} ({year}).
@@ -27,11 +26,12 @@ def generate_script(topic, long_form=True):
     last_error = None
     for attempt in range(3):
         try:
-            response = model.generate_content(
-                prompt,
-                request_options={"timeout": 300}
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=120
             )
-            return response.text
+            return response.choices[0].message.content
         except Exception as e:
             last_error = e
             print(f"[generate_script] Attempt {attempt + 1} failed: {e}")
