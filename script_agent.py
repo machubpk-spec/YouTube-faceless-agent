@@ -27,7 +27,7 @@ def generate_script(topic, long_form=True):
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-20b",
                 messages=[{"role": "user", "content": prompt}],
                 timeout=120
             )
