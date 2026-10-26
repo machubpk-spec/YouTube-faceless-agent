@@ -1,71 +1,115 @@
-import argparse
-import re
+import json
 import os
-from topics import get_next_topic
-from shorts_script_agent import generate_standalone_short, extract_short_from_longform
-from fact_check_agent import verify_script
-from tts_agent import run_tts
-from visual_agent import fetch_pixabay_images, fetch_wikimedia
-from shorts_visual_agent import reframe_to_vertical
-from shorts_caption_agent import get_word_timestamps, group_words
-from shorts_assembly_agent import assemble_short
-from shorts_upload_agent import upload_short
+import shutil
 
-def parse_script_sections(script_text):
-    hook = re.search(r"\[HOOK\](.*?)\[BODY\]", script_text, re.S)
-    full_text = re.sub(r"\[.*?\]|KEYWORDS:.*", "", script_text).strip()
-    keywords = re.findall(r"KEYWORDS:\s*(.+)", script_text)
-    hook_line = hook.group(1).strip() if hook else full_text.split(".")[0]
-    return hook_line, full_text, keywords
+from script_agent import generate_script, generate_titles
+from fact_check_agent import full_safety_pipeline
+from image_agent import generate_all_scene_images
+from tts_agent import generate_all_narration
+from shorts_caption_agent import generate_all_captions
+from shorts_assembly_agent import assemble_video
+from youtube_uploader import upload_short
 
-def run_shorts_pipeline(mode="standalone", long_script_path=None):
-    topic = get_next_topic()
+QUEUE_PATH = "queue.json"
 
-    if mode == "extract" and long_script_path and os.path.exists(long_script_path):
-        with open(long_script_path, encoding="utf-8") as f:
-            long_script = f.read()
-        script = extract_short_from_longform(long_script)
-    else:
-        raw_script = generate_standalone_short(topic)
-        script = verify_script(raw_script, topic)
 
-    hook_line, narration_text, keyword_lines = parse_script_sections(script)
-    run_tts(narration_text, "short_voice.mp3")
+def load_queue():
+    with open(QUEUE_PATH, "r") as f:
+        return json.load(f)
 
-    raw_images = []
-    for kw_line in keyword_lines:
-        for kw in kw_line.split(","):
-            imgs = fetch_wikimedia(kw.strip()) or fetch_pixabay_images(kw.strip(), count=2)
-            raw_images.extend(imgs)
 
-    if not raw_images:
-        raw_images = fetch_pixabay_images("vintage mystery", count=6)
+def save_queue(queue):
+    with open(QUEUE_PATH, "w") as f:
+        json.dump(queue, f, indent=2)
 
-    os.makedirs("assets", exist_ok=True)
-    vertical_images = []
-    for i, img in enumerate(raw_images):
-        out_path = f"assets/vertical_{i}.jpg"
-        reframe_to_vertical(img, out_path)
-        vertical_images.append(out_path)
 
-    words = get_word_timestamps("short_voice.mp3")
-    word_groups = group_words(words, group_size=3)
+def get_next_pending(queue):
+    for item in queue:
+        if item["status"] == "pending":
+            return item
+    return None
 
-    assemble_short(
-        vertical_images,
-        "short_voice.mp3",
-        "bg_music_energetic.mp3",
-        word_groups,
-        hook_line,
-        output_path="final_short.mp4"
-    )
 
-    video_id = upload_short("final_short.mp4", hook_line, topic["title"])
-    print(f"Uploaded Short Video ID: {video_id}")
+def cleanup_assets():
+    """Clear temp assets between runs to avoid disk bloat on CI runner"""
+    for folder in ["assets/images", "assets/audio", "output"]:
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+
+
+def run_pipeline():
+    queue = load_queue()
+    item = get_next_pending(queue)
+
+    if not item:
+        print("📭 No pending items in queue.")
+        return
+
+    print(f"🎬 Processing: {item['theme']}")
+    item["status"] = "processing"
+    save_queue(queue)
+
+    try:
+        # 1. Generate script
+        script_data = generate_script(item["theme"], item["character"])
+        print("✅ Script generated")
+
+        # 2. Safety check
+        safety_result = full_safety_pipeline(script_data)
+        if not safety_result["approved"]:
+            print(f"❌ Safety check failed: {safety_result['issues']}")
+            item["status"] = "rejected"
+            item["rejection_reason"] = safety_result["issues"]
+            save_queue(queue)
+            return
+        print("✅ Safety check passed")
+
+        # 3. Generate titles
+        titles = generate_titles(item["theme"], item["character"])
+        final_title = titles[0] if titles else script_data["title_concepts"][0]
+
+        # 4. Generate images
+        image_paths = generate_all_scene_images(script_data)
+        print(f"✅ {len(image_paths)} images generated")
+
+        # 5. Generate narration audio
+        audio_data = generate_all_narration(script_data)
+        print(f"✅ {len(audio_data)} audio clips generated")
+
+        # 6. Generate captions
+        captions = generate_all_captions(script_data, audio_data)
+        print("✅ Captions generated")
+
+        # 7. Assemble final video
+        output_path = f"output/{item['id']}.mp4"
+        assemble_video(image_paths, audio_data, captions, output_path)
+        print(f"✅ Video assembled: {output_path}")
+
+        # 8. Upload to YouTube
+        video_id = upload_short(
+            video_path=output_path,
+            title=final_title,
+            description=script_data["seo_description"],
+            tags=script_data["seo_tags"]
+        )
+
+        # 9. Update queue
+        item["status"] = "completed"
+        item["video_id"] = video_id
+        item["final_title"] = final_title
+        save_queue(queue)
+        print(f"🎉 Done! Video ID: {video_id}")
+
+    except Exception as e:
+        print(f"❌ Pipeline failed: {str(e)}")
+        item["status"] = "failed"
+        item["error"] = str(e)
+        save_queue(queue)
+        raise
+
+    finally:
+        cleanup_assets()
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type=str, default="standalone")
-    parser.add_argument("--source", type=str, default=None)
-    args = parser.parse_args()
-    run_shorts_pipeline(mode=args.mode, long_script_path=args.source)
+    run_pipeline()
