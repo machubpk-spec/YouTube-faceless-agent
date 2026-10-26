@@ -7,7 +7,7 @@ from googleapiclient.http import MediaFileUpload
 
 def get_authenticated_service():
     """
-    YOUTUBE_TOKEN secret should contain the full JSON of your OAuth credentials:
+    YOUTUBE_TOKEN_JSON secret should contain the full JSON of your OAuth credentials:
     {
       "token": "...",
       "refresh_token": "...",
@@ -17,7 +17,7 @@ def get_authenticated_service():
       "scopes": ["https://www.googleapis.com/auth/youtube.upload"]
     }
     """
-    token_data = json.loads(os.environ["YOUTUBE_TOKEN"])
+    token_data = json.loads(os.environ["YOUTUBE_TOKEN_JSON"])  # <-- fixed name
     creds = Credentials(
         token=token_data["token"],
         refresh_token=token_data["refresh_token"],
