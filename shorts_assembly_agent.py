@@ -1,12 +1,21 @@
 import os
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+# Compatibility shim: moviepy==1.0.3 still calls the old PIL.Image.ANTIALIAS
+# constant, which newer Pillow versions (10+) removed in favor of LANCZOS.
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.LANCZOS
+
 from moviepy.editor import (
-    ImageClip, AudioFileClip, CompositeVideoClip, TextClip,
+    ImageClip, AudioFileClip, CompositeVideoClip,
     concatenate_videoclips
 )
 
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 FPS = 30
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def apply_ken_burns(image_clip: ImageClip, duration: float, zoom_factor: float = 1.15):
@@ -16,29 +25,45 @@ def apply_ken_burns(image_clip: ImageClip, duration: float, zoom_factor: float =
                       .set_duration(duration)
 
 
+def create_caption_image(text: str, width: int = VIDEO_WIDTH - 100, font_size: int = 70):
+    """Render caption text to a transparent PNG using Pillow (no ImageMagick needed)"""
+    font = ImageFont.truetype(FONT_PATH, font_size)
+
+    dummy_img = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(dummy_img)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    padding = 20
+    img = Image.new("RGBA", (width, text_h + padding * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    x = (width - text_w) // 2
+    y = padding
+
+    # Black stroke outline for readability
+    stroke_width = 3
+    for dx in range(-stroke_width, stroke_width + 1):
+        for dy in range(-stroke_width, stroke_width + 1):
+            draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, 255))
+    draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+
+    return np.array(img)
+
+
 def create_scene_clip(image_path: str, audio_path: str, captions: list, duration: float):
-    # Base image with Ken Burns zoom
     img_clip = ImageClip(image_path).resize(height=VIDEO_HEIGHT)
     img_clip = apply_ken_burns(img_clip, duration)
     img_clip = img_clip.set_position('center')
 
-    # Audio
     audio_clip = AudioFileClip(audio_path)
 
-    # Caption overlays
     caption_clips = []
     for cap in captions:
+        caption_array = create_caption_image(cap["text"])
         txt_clip = (
-            TextClip(
-                cap["text"],
-                fontsize=70,
-                color='white',
-                font='Arial-Bold',
-                stroke_color='black',
-                stroke_width=3,
-                method='caption',
-                size=(VIDEO_WIDTH - 100, None)
-            )
+            ImageClip(caption_array)
             .set_start(cap["start"])
             .set_duration(cap["end"] - cap["start"])
             .set_position(('center', VIDEO_HEIGHT - 400))
