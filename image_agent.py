@@ -7,8 +7,8 @@ from character_config import CHARACTER_BIBLE, STYLE_SUFFIX
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 # Run list_models.py to confirm this model ID is current/available to your key
-IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
-
+# image_agent.py — confirmed correct model
+IMAGE_MODEL = "gemini-2.5-flash-image"
 
 def generate_scene_image(image_prompt: str, scene_number: int, output_dir: str = "assets/images") -> str:
     """
