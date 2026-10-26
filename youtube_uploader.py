@@ -7,17 +7,12 @@ from googleapiclient.http import MediaFileUpload
 
 def get_authenticated_service():
     """
-    YOUTUBE_TOKEN_JSON secret should contain the full JSON of your OAuth credentials:
-    {
-      "token": "...",
-      "refresh_token": "...",
-      "token_uri": "https://oauth2.googleapis.com/token",
-      "client_id": "...",
-      "client_secret": "...",
-      "scopes": ["https://www.googleapis.com/auth/youtube.upload"]
-    }
+    Reads OAuth credentials from token.json, written to disk by the
+    GitHub Actions workflow step "Restore YouTube OAuth Token".
     """
-    token_data = json.loads(os.environ["YOUTUBE_TOKEN_JSON"])  # <-- fixed name
+    with open("token.json", "r") as f:
+        token_data = json.load(f)
+
     creds = Credentials(
         token=token_data["token"],
         refresh_token=token_data["refresh_token"],
@@ -52,12 +47,7 @@ def upload_short(
     }
 
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
-
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=body,
-        media_body=media
-    )
+    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
     response = None
     while response is None:
