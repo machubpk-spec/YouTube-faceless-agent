@@ -20,22 +20,31 @@ Script:
 
 def verify_script(script_text, topic):
     prompt = FACT_CHECK_PROMPT.format(title=topic["title"], year=topic["year"], script=script_text)
-    
-    # We add request_options to tell Google to wait longer and retry if it times out
+
+    custom_retry = retry.Retry(
+        predicate=retry.if_exception_type(
+            exceptions.DeadlineExceeded,
+            exceptions.ServiceUnavailable,
+            exceptions.InternalServerError,
+        ),
+        initial=5,
+        maximum=60,
+        multiplier=2,
+        timeout=900,  # overall retry budget: 15 minutes
+    )
+
     response = model.generate_content(
         prompt,
+        stream=True,
         request_options={
-            "timeout": 600,  # Wait up to 10 minutes for a response
-            "retry": retry.Retry(
-                predicate=retry.if_exception_type(
-                    exceptions.DeadlineExceeded,
-                    exceptions.ServiceUnavailable,
-                    exceptions.InternalServerError,
-                ),
-                initial=5,
-                maximum=60,
-                multiplier=2,
-            ),
+            "timeout": 900,
+            "retry": custom_retry,
         },
     )
-    return response.text
+
+    full_text = ""
+    for chunk in response:
+        if chunk.text:
+            full_text += chunk.text
+
+    return full_text
