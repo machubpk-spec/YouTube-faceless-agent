@@ -24,6 +24,8 @@ jobs:
           cache: 'pip'
 
       - name: Install Linux System Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
