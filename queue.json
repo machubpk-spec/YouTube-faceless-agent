@@ -21,7 +21,9 @@
     "id": "vid_003",
     "theme": "sharing toys with a friend",
     "character": "Benny the Bunny",
-    "status": "pending",
-    "created_at": "2025-01-01T00:00:00Z"
+    "status": "completed",
+    "created_at": "2025-01-01T00:00:00Z",
+    "video_id": "uRUSo7BOZnk",
+    "final_title": "Benny's Blue Ball Share"
   }
 ]
